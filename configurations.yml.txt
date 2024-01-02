@@ -1,0 +1,6 @@
+file_paths:
+  index_file: ../index/
+access_token: 9r7APFiKa2rQLwRwOIPEtKojx6UrbInq
+workspace_id: dec422a7-f535-4a54-98ce-94c21ad880e9_workspace
+
+  
