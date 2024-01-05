@@ -109,6 +109,8 @@ def create_wikidocs(wikipage_requests):
 def index_wikipedia_pages(wikipage_requests, settings):
 
     # Use the open source LLMs hosted by Gradient
+
+
     if settings['MODEL'] == "llama2-7b-chat":
         query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
         llm = CustomGradientBaseModelLLM(
@@ -118,13 +120,21 @@ def index_wikipedia_pages(wikipage_requests, settings):
             query_wrapper_prompt=query_wrapper_prompt
         )
     elif settings['MODEL'] == "11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter":
-        query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
+        query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
         llm = CustomGradientModelAdapterLLM(
             model_adapter_id="11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter",
             max_tokens=250,
             is_chat_model=True,
             query_wrapper_prompt=query_wrapper_prompt
 
+        )
+    elif settings['MODEL'] == "nous-hermes2":
+        query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
+        llm = CustomGradientBaseModelLLM(
+            base_model_slug="nous-hermes2",
+            max_tokens=250,
+            is_chat_model=True,
+            query_wrapper_prompt=query_wrapper_prompt
         )
 
     print(f"Preparing to index Wikipages: {wikipage_requests}")
@@ -164,7 +174,7 @@ async def on_chat_start():
             Select(
                 id="MODEL",
                 label="Gradient Model",
-                values=["11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter", "llama2-7b-chat"],
+                values=["11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter", "llama2-7b-chat", "nous-hermes2"],
                 initial_index=0,
             ),
             TextInput(id="WikiPageRequest", label="Request Wikipage(s)"),
