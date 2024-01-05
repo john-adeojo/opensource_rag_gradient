@@ -1,6 +1,6 @@
 import chainlit as cl
 import wikipedia
-from chainlit.input_widget import TextInput
+from chainlit.input_widget import TextInput, Select
 from llama_index.embeddings import GradientEmbedding
 from llama_index.readers.schema.base import Document
 from llama_index.llms.gradient import _BaseGradientLLM
@@ -54,8 +54,42 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
             base_model_slug=base_model_slug,
         )
 
+class CustomGradientModelAdapterLLM(_BaseGradientLLM):
+    model_adapter_id: str = Field(
+        description="The id of the model adapter to use.",
+    )
+
+    def __init__(
+        self,
+        *,
+        access_token: Optional[str] = None,
+        host: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        model_adapter_id: str,
+        workspace_id: Optional[str] = None,
+        callback_manager: Optional[CallbackManager] = None,
+        is_chat_model: bool = False,
+        query_wrapper_prompt: Optional[str] = None,
+
+    ) -> None:
+        super().__init__(
+            access_token=access_token,
+            host=host,
+            max_tokens=max_tokens,
+            model_adapter_id=model_adapter_id,
+            workspace_id=workspace_id,
+            callback_manager=callback_manager,
+            is_chat_model=is_chat_model,
+            query_wrapper_prompt=query_wrapper_prompt,
+
+        )
+        self._model = self._gradient.get_model_adapter(
+            model_adapter_id=model_adapter_id
+        )
+
 def create_wikidocs(wikipage_requests):
     list_of_wikipages = [wikipage_requests]
+    
     print(f"Preparing to Download:{list_of_wikipages}")
     documents = []
     for page_title in list_of_wikipages:
@@ -72,16 +106,26 @@ def create_wikidocs(wikipage_requests):
     print("Finished downloading pages")
     return documents
 
-def index_wikipedia_pages(wikipage_requests):
+def index_wikipedia_pages(wikipage_requests, settings):
 
     # Use the open source LLMs hosted by Gradient
-    query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
-    llm = CustomGradientBaseModelLLM(
-        base_model_slug="llama2-7b-chat",
-        max_tokens=250,
-        is_chat_model=True,
-        query_wrapper_prompt=query_wrapper_prompt
-    )  
+    if settings['MODEL'] == "llama2-7b-chat":
+        query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
+        llm = CustomGradientBaseModelLLM(
+            base_model_slug="llama2-7b-chat",
+            max_tokens=250,
+            is_chat_model=True,
+            query_wrapper_prompt=query_wrapper_prompt
+        )
+    elif settings['MODEL'] == "11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter":
+        query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
+        llm = CustomGradientModelAdapterLLM(
+            model_adapter_id="11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter",
+            max_tokens=250,
+            is_chat_model=True,
+            query_wrapper_prompt=query_wrapper_prompt
+
+        )
 
     print(f"Preparing to index Wikipages: {wikipage_requests}")
     documents = create_wikidocs(wikipage_requests)
@@ -101,8 +145,8 @@ def index_wikipedia_pages(wikipage_requests):
 
     return index, service_context
 
-def build_query_engine(wikipage_requests, n_results=5): 
-    index, service_context = index_wikipedia_pages(wikipage_requests)
+def build_query_engine(wikipage_requests, n_results, settings): 
+    index, service_context = index_wikipedia_pages(wikipage_requests, settings)
     query_engine = index.as_query_engine(
         chat_mode='context', 
         response_mode="compact", 
@@ -117,6 +161,12 @@ async def on_chat_start():
     # Settings
     settings = await cl.ChatSettings(
         [
+            Select(
+                id="MODEL",
+                label="Gradient Model",
+                values=["11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter", "llama2-7b-chat"],
+                initial_index=0,
+            ),
             TextInput(id="WikiPageRequest", label="Request Wikipage(s)"),
         ]
     ).send()
@@ -126,7 +176,7 @@ async def setup_agent(settings):
     global agent
     global index
     wikipage_requests = settings["WikiPageRequest"]
-    query_engine = build_query_engine(wikipage_requests, n_results=5)
+    query_engine = build_query_engine(wikipage_requests, n_results=5, settings=settings)
     cl.user_session.set("query_engine", query_engine)
     await cl.Message(
         author="Wiki Agent", content=f"""Wikipage(s) "{wikipage_requests}" successfully indexed"""
