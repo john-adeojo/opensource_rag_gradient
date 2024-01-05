@@ -1,41 +1,21 @@
-from llama_index.tools import QueryEngineTool, ToolMetadata
 import chainlit as cl
-from chainlit.input_widget import Select, TextInput
-from llama_index import StorageContext, load_index_from_storage
-from llama_index.agent import ReActAgent
-from llama_index.chat_engine import ContextChatEngine
+import wikipedia
+from chainlit.input_widget import TextInput
 from llama_index.embeddings import GradientEmbedding
+from llama_index.readers.schema.base import Document
 from llama_index.llms.gradient import _BaseGradientLLM
 from llama_index.callbacks.base import CallbackManager
-from typing import Any, List, Optional
+from typing import Optional
+from llama_index.prompts import PromptTemplate
 from llama_index.bridge.pydantic import Field
 import os
-import json
-from llama_index.prompts.prompts import SimpleInputPrompt
 from llama_index import VectorStoreIndex, ServiceContext
-# from llama_index.node_parser import SimpleNodeParser
 from llama_index.node_parser import TokenTextSplitter
-from llama_index.extractors import (
-    TitleExtractor,
-    QuestionsAnsweredExtractor,
-)
-from make_index import load_index, create_wikidocs
-import nest_asyncio
-nest_asyncio.apply()
+import setup
 
-# system_prompt = """[INST] <>
-#     You are a helpful Wikipedia chat assistant. You goal is to 
-#     answer questions based on the Wikipedia context you recieve.
-#     You must always use the context to answer questions.
-#     If a question does not make any sense, or is not factually coherent, explain 
-#     why instead of answering something not correct. If you don't know the answer 
-#     to a question, please don't share false information.
-#       <>
-#     """
-#     # Throw together the query wrapper
-# query_wrapper_prompt = SimpleInputPrompt("{query_str} [/INST]")
+setup.set_environment_variables()
 
-class GradientBaseModelLLM(_BaseGradientLLM):
+class CustomGradientBaseModelLLM(_BaseGradientLLM):
     base_model_slug: str = Field(
         description="The slug of the base model to use.",
     )
@@ -52,6 +32,8 @@ class GradientBaseModelLLM(_BaseGradientLLM):
         is_chat_model: bool = False,
         system_prompt: Optional[str] = None,
         query_wrapper_prompt: Optional[str] = None,
+        # messages_to_prompt: Optional[Callable[[Sequence[ChatMessage]], str]] = None,
+        # completion_to_prompt: Optional[Callable[[str], str]] = None,
 
     ) -> None:
         super().__init__(
@@ -63,33 +45,43 @@ class GradientBaseModelLLM(_BaseGradientLLM):
             callback_manager=callback_manager,
             is_chat_model=is_chat_model,
             system_prompt=system_prompt,
-
+            query_wrapper_prompt=query_wrapper_prompt,
+            # messages_to_prompt=messages_to_prompt,
+            # completion_to_prompt=completion_to_prompt,
         )
 
         self._model = self._gradient.get_base_model(
             base_model_slug=base_model_slug,
         )
 
+def create_wikidocs(wikipage_requests):
+    list_of_wikipages = [wikipage_requests]
+    print(f"Preparing to Download:{list_of_wikipages}")
+    documents = []
+    for page_title in list_of_wikipages:
+        try:
+            wiki_page = wikipedia.page(page_title)
+            page_content = wiki_page.content
+            page_url = wiki_page.url
+            document = Document(text=page_content, metadata={'source_url': page_url})
+            documents.append(document)
+        except wikipedia.exceptions.PageError:
+            print(f"PageError: The page titled '{page_title}' does not exist on Wikipedia.")
+        except wikipedia.exceptions.DisambiguationError as e:
+            print(f"DisambiguationError: The page titled '{page_title}' is ambiguous. Possible options: {e.options}")
+    print("Finished downloading pages")
+    return documents
+
 def index_wikipedia_pages(wikipage_requests):
-    # Create a system prompt 
-    system_prompt = """[INST] <>
-    You are a helpful Wikipedia chat assistant. You goal is to 
-    answer questions based on the Wikipedia context you recieve.
-    You must always use the context to answer questions.
-    If a question does not make any sense, or is not factually coherent, explain 
-    why instead of answering something not correct. If you don't know the answer 
-    to a question, please don't share false information.
-      <>
-    """
-    # Throw together the query wrapper
-    query_wrapper_prompt = SimpleInputPrompt("{query_str} [/INST]")
-     
-    config_file_path = os.path.join(os.path.dirname(__file__), '..', 'configurations.json')
-    print("config_file_path", config_file_path)
-    with open(config_file_path, 'r') as file:
-        config = json.load(file)
-    index_path = config['file_paths']['index_file']
-    print("index_path!!!", index_path)
+
+    # Use the open source LLMs hosted by Gradient
+    query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
+    llm = CustomGradientBaseModelLLM(
+        base_model_slug="llama2-7b-chat",
+        max_tokens=250,
+        is_chat_model=True,
+        query_wrapper_prompt=query_wrapper_prompt
+    )  
 
     print(f"Preparing to index Wikipages: {wikipage_requests}")
     documents = create_wikidocs(wikipage_requests)
@@ -100,63 +92,25 @@ def index_wikipedia_pages(wikipage_requests):
     gradient_workspace_id=os.environ['GRADIENT_WORKSPACE_ID'],
     gradient_model_slug="bge-large",
     )
-
-    # Use the open source LLMs hosted by Gradient
-    llm = GradientBaseModelLLM(
-        base_model_slug="llama2-7b-chat",
-        max_tokens=500,
-        system_prompt=system_prompt,
-        query_wrapper_prompt=query_wrapper_prompt,
-    )   
-    service_context = ServiceContext.from_defaults(node_parser=parser, embed_model=embed_model, llm=None)
+ 
+    service_context = ServiceContext.from_defaults(node_parser=parser, embed_model=embed_model, llm=llm)
     # set_global_service_context(service_context)
     index = VectorStoreIndex.from_documents(documents, service_context=service_context, show_progress=True)
-    index.storage_context.persist(index_path)
+    # index.storage_context.persist(index_path)
     print(f"{wikipage_requests} have been indexed.")
 
     return index, service_context
 
-def build_query_engine(index, service_context, n_results=5): 
+def build_query_engine(wikipage_requests, n_results=5): 
+    index, service_context = index_wikipedia_pages(wikipage_requests)
     query_engine = index.as_query_engine(
-        chat_mode='context', response_mode="compact", verbose=True, similarity_top_k=n_results, 
+        chat_mode='context', 
+        response_mode="compact", 
+        verbose=True, 
+        similarity_top_k=n_results, 
         service_context=service_context
     )
     return query_engine
-
-def create_agent(wikipage_requests):
-    # Create a system prompt 
-    system_prompt = """[INST] <<SYS>>
-    You are a helpful Wikipedia chat assistant. You goal is to 
-    answer questions based on the Wikipedia context you recieve.
-    You must always use the context to answer questions.
-    If a question does not make any sense, or is not factually coherent, explain 
-    why instead of answering something not correct. If you don't know the answer 
-    to a question, please don't share false information. Answer only the {query_str}.
-    do not generate additional questions and answers.
-      <</SYS>>
-    """
-    query_wrapper_prompt = SimpleInputPrompt("{query_str} [/INST]")
-
-    llm = GradientBaseModelLLM(
-        base_model_slug="llama2-7b-chat",
-        max_tokens=500,
-        system_prompt=system_prompt,
-        query_wrapper_prompt=query_wrapper_prompt,
-        is_chat_model=True,
-    )
-
-    index, service_context = index_wikipedia_pages(wikipage_requests)
-    retreiver = index.as_retriever(response_mode="compact", verbose=True, similarity_top_k=5, 
-        service_context=service_context)
-
-    agent = ContextChatEngine.from_defaults(
-        llm=llm,
-        callback_manager=CallbackManager([cl.LlamaIndexCallbackHandler()]),
-        verbose=True,
-        retriever=retreiver,
-        service_context=service_context
-    )
-    return agent
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -172,12 +126,7 @@ async def setup_agent(settings):
     global agent
     global index
     wikipage_requests = settings["WikiPageRequest"]
-    # service_context = index_wikipedia_pages(wikipage_requests)
-    # index = load_index(service_context)
-    # print("on_settings_update", settings)
-    # index, service_context = index_wikipedia_pages(wikipage_requests)
-    query_engine = create_agent(wikipage_requests)
-    # query_engine = build_query_engine(index=index, service_context=service_context, n_results=5)
+    query_engine = build_query_engine(wikipage_requests, n_results=5)
     cl.user_session.set("query_engine", query_engine)
     await cl.Message(
         author="Wiki Agent", content=f"""Wikipage(s) "{wikipage_requests}" successfully indexed"""
@@ -186,29 +135,11 @@ async def setup_agent(settings):
 @cl.on_message
 async def main(message: cl.Message):
     query_engine = cl.user_session.get("query_engine")
-    response = await cl.make_async(query_engine.chat)(message.content)
-
+    response = await cl.make_async(query_engine.query)(message.content)
     print(response)
-
-    response_message = cl.Message(content="")
-
-    for token in response.response_gen:
-        await response_message.stream_token(token=token)
-
-    if response.response_txt:
-        response_message.content = response.response_txt
-
-    await response_message.send()
-
-    # await cl.Message(author="Agent", content=response).send()
-
-
-# @cl.on_message
-# async def main(message):
-#     if agent:
-#         response = await cl.make_async(agent.chat)(message)
-#         # response = await cl.make_async(agent.chat(message))
-#         await cl.Message(author="Agent", content=response).send()
+    response_message = cl.Message(content=response)
+    print("response message", response_message)
+    await cl.Message(author="Agent", content=response_message.content).send()
 
 # if __name__ == "__main__":
     # index, service_context = index_wikipedia_pages(["2023 United States banking crisis"])
