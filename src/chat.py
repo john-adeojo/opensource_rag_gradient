@@ -5,10 +5,12 @@ from llama_index.embeddings import GradientEmbedding
 from llama_index.readers.schema.base import Document
 from llama_index.llms.gradient import _BaseGradientLLM
 from llama_index.callbacks.base import CallbackManager
-from typing import Optional
+from typing import Optional, Any
 from llama_index.prompts import PromptTemplate
 from llama_index.bridge.pydantic import Field
 import os
+from typing_extensions import override
+from llama_index.llms.types import CompletionResponse
 from llama_index import VectorStoreIndex, ServiceContext
 from llama_index.node_parser import TokenTextSplitter
 import setup
@@ -50,9 +52,21 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
             # completion_to_prompt=completion_to_prompt,
         )
 
+        # Delete after 
+
         self._model = self._gradient.get_base_model(
             base_model_slug=base_model_slug,
         )
+
+    @override
+    def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
+        print(f"Custom Prompt: {prompt}")  # Custom print statement
+        return super().complete(prompt, **kwargs)
+
+    @override
+    async def acomplete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
+        print(f"Custom Prompt: {prompt}")  # Custom print statement
+        return await super().acomplete(prompt, **kwargs)
 
 class CustomGradientModelAdapterLLM(_BaseGradientLLM):
     model_adapter_id: str = Field(
@@ -84,7 +98,7 @@ class CustomGradientModelAdapterLLM(_BaseGradientLLM):
 
         )
         self._model = self._gradient.get_model_adapter(
-            model_adapter_id=model_adapter_id
+            model_adapter_id=model_adapter_id,
         )
 
 def create_wikidocs(wikipage_requests):
@@ -119,10 +133,10 @@ def index_wikipedia_pages(wikipage_requests, settings):
             is_chat_model=True,
             query_wrapper_prompt=query_wrapper_prompt
         )
-    elif settings['MODEL'] == "11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter":
+    elif settings['MODEL'] == "7ad322cc-03f2-4011-8c94-56ef3e4405b1_model_adapter":
         query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
         llm = CustomGradientModelAdapterLLM(
-            model_adapter_id="11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter",
+            model_adapter_id="7ad322cc-03f2-4011-8c94-56ef3e4405b1_model_adapter",
             max_tokens=250,
             is_chat_model=True,
             query_wrapper_prompt=query_wrapper_prompt
@@ -153,10 +167,10 @@ def index_wikipedia_pages(wikipage_requests, settings):
     # index.storage_context.persist(index_path)
     print(f"{wikipage_requests} have been indexed.")
 
-    return index, service_context
+    return index, service_context, llm
 
 def build_query_engine(wikipage_requests, n_results, settings): 
-    index, service_context = index_wikipedia_pages(wikipage_requests, settings)
+    index, service_context, llm = index_wikipedia_pages(wikipage_requests, settings)
     query_engine = index.as_query_engine(
         chat_mode='context', 
         response_mode="compact", 
@@ -164,7 +178,7 @@ def build_query_engine(wikipage_requests, n_results, settings):
         similarity_top_k=n_results, 
         service_context=service_context
     )
-    return query_engine
+    return query_engine, llm
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -174,7 +188,7 @@ async def on_chat_start():
             Select(
                 id="MODEL",
                 label="Gradient Model",
-                values=["11b9afde-e078-4ecc-8b32-0082000e2942_model_adapter", "llama2-7b-chat", "nous-hermes2"],
+                values=["7ad322cc-03f2-4011-8c94-56ef3e4405b1_model_adapter", "llama2-7b-chat", "nous-hermes2"],
                 initial_index=0,
             ),
             TextInput(id="WikiPageRequest", label="Request Wikipage(s)"),
@@ -186,8 +200,9 @@ async def setup_agent(settings):
     global agent
     global index
     wikipage_requests = settings["WikiPageRequest"]
-    query_engine = build_query_engine(wikipage_requests, n_results=5, settings=settings)
+    query_engine, llm = build_query_engine(wikipage_requests, n_results=5, settings=settings)
     cl.user_session.set("query_engine", query_engine)
+    cl.user_session.set("llm", llm)
     await cl.Message(
         author="Wiki Agent", content=f"""Wikipage(s) "{wikipage_requests}" successfully indexed"""
     ).send()
@@ -195,6 +210,8 @@ async def setup_agent(settings):
 @cl.on_message
 async def main(message: cl.Message):
     query_engine = cl.user_session.get("query_engine")
+    llm = cl.user_session.get("llm")
+    print("TEMPLATE", llm)
     response = await cl.make_async(query_engine.query)(message.content)
     print(response)
     response_message = cl.Message(content=response)
