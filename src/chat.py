@@ -133,10 +133,10 @@ def index_wikipedia_pages(wikipage_requests, settings):
             is_chat_model=True,
             query_wrapper_prompt=query_wrapper_prompt
         )
-    elif settings['MODEL'] == "7ad322cc-03f2-4011-8c94-56ef3e4405b1_model_adapter":
+    elif settings['MODEL'] == "35fe5692-aaa9-421a-833b-a0171d433a00_model_adapter":
         query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
         llm = CustomGradientModelAdapterLLM(
-            model_adapter_id="7ad322cc-03f2-4011-8c94-56ef3e4405b1_model_adapter",
+            model_adapter_id="35fe5692-aaa9-421a-833b-a0171d433a00_model_adapter",
             max_tokens=250,
             is_chat_model=True,
             query_wrapper_prompt=query_wrapper_prompt
@@ -188,7 +188,7 @@ async def on_chat_start():
             Select(
                 id="MODEL",
                 label="Gradient Model",
-                values=["7ad322cc-03f2-4011-8c94-56ef3e4405b1_model_adapter", "llama2-7b-chat", "nous-hermes2"],
+                values=["35fe5692-aaa9-421a-833b-a0171d433a00_model_adapter", "llama2-7b-chat", "nous-hermes2"],
                 initial_index=0,
             ),
             TextInput(id="WikiPageRequest", label="Request Wikipage(s)"),

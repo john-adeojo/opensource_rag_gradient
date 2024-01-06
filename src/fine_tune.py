@@ -1,28 +1,30 @@
+import json
+import pathlib
 from dotenv import load_dotenv
 import setup
-import json 
-import pathlib
 
 # Set Environment Variables
 setup.set_environment_variables()
+data = "yoda_style_questions_responses_1k.jsonl"
 
-def read_samples_from_jsonl(file_name):
+def read_samples_from_jsonl_in_batches(file_name, batch_size=100):
     # Construct the file path relative to the parent of the current script's directory
     current_dir = pathlib.Path(__file__).parent
     file_path = current_dir.parent / file_name
 
-    samples = []
+    batch = []
     with open(file_path, 'r') as file:
         for line in file:
             data = json.loads(line)
-            samples.append(data)
-    return samples
+            batch.append(data)
+            # Yield the current batch if it has reached the batch size
+            if len(batch) == batch_size:
+                yield batch
+                batch = []
 
-# samples = read_samples_from_jsonl("reformatted_train_v5_reduced_20.jsonl")
-# print(samples)
-
-load_dotenv()
-from gradientai import Gradient
+    # Yield the last batch if it has any remaining samples
+    if batch:
+        yield batch
 
 def example_query_yoda():
     query = """  
@@ -31,7 +33,9 @@ def example_query_yoda():
     return query
 
 def main():
-    samples = read_samples_from_jsonl("yoda_style_factual_qa_100.jsonl")
+    load_dotenv()
+    from gradientai import Gradient
+
     sample_query = example_query_yoda()
 
     gradient = Gradient()
@@ -40,7 +44,7 @@ def main():
 
     new_model_adapter = base_model.create_model_adapter(
         name="nous-hermes2-yoda-v13",
-        rank= 25,
+        rank= 16,
         learning_rate= 1e-5,
     )
     print(f"Created model adapter with id {new_model_adapter.id}")
@@ -49,18 +53,20 @@ def main():
     completion = new_model_adapter.complete(query=sample_query, max_generated_token_count=500).generated_output
     print(f"Generated before finetuning!: {completion}")
 
-    mum_epochs = 10
-    count = 0   
-    while count < mum_epochs:
-        print (f"Fine-tuning epoch {count + 1}")
-        new_model_adapter.fine_tune(samples=samples)
-        count += 1
+    num_epochs = 2
+    for epoch in range(num_epochs):
+        print(f"Fine-tuning epoch {epoch + 1}")
+        batch_number = 0
+        for batch in read_samples_from_jsonl_in_batches(data):
+            batch_number += 1
+            print(f"Processing batch {batch_number} in epoch {epoch + 1}")
+            new_model_adapter.fine_tune(samples=batch)
 
-    completion = new_model_adapter.complete(query=sample_query, max_generated_token_count=500).generated_output
-    print(f"Generated after finetuning!: {completion}")
+        completion = new_model_adapter.complete(query=sample_query, max_generated_token_count=500).generated_output
+        print(f"Generated after epoch {epoch + 1}: {completion}")
 
     # new_model_adapter.delete()
-    print("finetuning complete!")
+    print("Finetuning complete!")
     gradient.close()
 
 if __name__ == "__main__":
