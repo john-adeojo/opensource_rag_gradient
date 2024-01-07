@@ -13,7 +13,7 @@ from llama_index.embeddings import GradientEmbedding
 from llama_index.readers.schema.base import Document
 from llama_index.llms.gradient import _BaseGradientLLM
 from llama_index.callbacks.base import CallbackManager
-from typing import Optional, Any
+from typing import Optional, Any, Callable, Sequence
 from llama_index.prompts import PromptTemplate
 from llama_index.bridge.pydantic import Field
 import os
@@ -21,42 +21,32 @@ from typing_extensions import override
 from llama_index.llms.types import CompletionResponse
 from llama_index import VectorStoreIndex, ServiceContext
 from llama_index.node_parser import TokenTextSplitter
+# from llama_index.llms.gradient import GradientBaseModelLLM, GradientModelAdapterLLM
 import setup
 
 setup.set_environment_variables()
 global model_adapter_id
-model_adapter_id = "f06aec81-7305-435a-bb2f-d7b042da4d8d_model_adapter"
+model_adapter_id = "10505b56-9aa2-4775-a73e-1343d86d88dc_model_adapter"
 
 # Set prompt template
+# qa_prompt = PromptTemplate(
+#     "<s>### Instruction:\n"
+#     "---------------------\n"
+#     "{context_str}\n"
+#     "---------------------\n"
+#     "Given the context information and not prior knowledge, "
+#     "answer the query.\n"
+#     "Query: {query_str}\n\n"
+#     "### Response:\n"
+# )
+
 qa_prompt = PromptTemplate(
-    "<s>### Instruction:\n"
-    "---------------------\n"
-    "{context_str}\n"
-    "---------------------\n"
-    "Given the context information and not prior knowledge, "
-    "answer the query.\n"
-    "Query: {query_str}\n\n"
+    "### Instruction:\n"
+    "{query_str}\n\n"
+    "### Input:\n"
+    "{context_str}\n\n"
     "### Response:\n"
 )
-
-# class RAGStringQueryEngine(CustomQueryEngine):
-#     """RAG String Query Engine."""
-
-#     retriever: BaseRetriever
-#     response_synthesizer: BaseSynthesizer
-#     llm: CustomGradientModelAdapterLLM
-#     qa_prompt: PromptTemplate
-
-#     def custom_query(self, query_str: str):
-#         nodes = self.retriever.retrieve(query_str)
-
-#         context_str = "\n\n".join([n.node.get_content() for n in nodes])
-#         response = self.llm.complete(
-#             qa_prompt.format(context_str=context_str, query_str=query_str)
-#         )
-
-#         return str(response)
-
 
 class CustomGradientBaseModelLLM(_BaseGradientLLM):
     base_model_slug: str = Field(
@@ -73,11 +63,6 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
         workspace_id: Optional[str] = None,
         callback_manager: Optional[CallbackManager] = None,
         is_chat_model: bool = False,
-        system_prompt: Optional[str] = None,
-        query_wrapper_prompt: Optional[str] = None,
-        # messages_to_prompt: Optional[Callable[[Sequence[ChatMessage]], str]] = None,
-        # completion_to_prompt: Optional[Callable[[str], str]] = None,
-
     ) -> None:
         super().__init__(
             access_token=access_token,
@@ -87,16 +72,12 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
             workspace_id=workspace_id,
             callback_manager=callback_manager,
             is_chat_model=is_chat_model,
-            system_prompt=system_prompt,
-            query_wrapper_prompt=query_wrapper_prompt,
-            # messages_to_prompt=messages_to_prompt,
-            # completion_to_prompt=completion_to_prompt,
         )
 
         self._model = self._gradient.get_base_model(
             base_model_slug=base_model_slug,
         )
-
+ 
     @override
     def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
@@ -106,6 +87,7 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
     async def acomplete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
         return await super().acomplete(prompt, **kwargs)
+    
 
 class CustomGradientModelAdapterLLM(_BaseGradientLLM):
     model_adapter_id: str = Field(
@@ -122,8 +104,6 @@ class CustomGradientModelAdapterLLM(_BaseGradientLLM):
         workspace_id: Optional[str] = None,
         callback_manager: Optional[CallbackManager] = None,
         is_chat_model: bool = False,
-        query_wrapper_prompt: Optional[str] = None,
-
     ) -> None:
         super().__init__(
             access_token=access_token,
@@ -133,8 +113,6 @@ class CustomGradientModelAdapterLLM(_BaseGradientLLM):
             workspace_id=workspace_id,
             callback_manager=callback_manager,
             is_chat_model=is_chat_model,
-            query_wrapper_prompt=query_wrapper_prompt,
-
         )
         self._model = self._gradient.get_model_adapter(
             model_adapter_id=model_adapter_id,
@@ -150,9 +128,8 @@ class CustomGradientModelAdapterLLM(_BaseGradientLLM):
         print(f"Custom Prompt: {prompt}")  # Custom print statement
         return await super().acomplete(prompt, **kwargs)
 
-class RAGStringQueryEngine(CustomQueryEngine):
+class RAGStringQueryEngine_Adpater(CustomQueryEngine):
     """RAG String Query Engine."""
-    
     retriever: BaseRetriever
     response_synthesizer: BaseSynthesizer
     llm: CustomGradientModelAdapterLLM
@@ -160,10 +137,27 @@ class RAGStringQueryEngine(CustomQueryEngine):
 
     def custom_query(self, query_str: str):
         nodes = self.retriever.retrieve(query_str)
-
         context_str = "\n\n".join([n.node.get_content() for n in nodes])
+        kwargs = {"temperature":1}
         response = self.llm.complete(
-            qa_prompt.format(context_str=context_str, query_str=query_str)
+            qa_prompt.format(context_str=context_str, query_str=query_str, **kwargs)
+        )
+
+        return str(response)
+    
+class RAGStringQueryEngine(CustomQueryEngine):
+    """RAG String Query Engine."""
+    retriever: BaseRetriever
+    response_synthesizer: BaseSynthesizer
+    llm: CustomGradientBaseModelLLM
+    qa_prompt: PromptTemplate
+
+    def custom_query(self, query_str: str):
+        nodes = self.retriever.retrieve(query_str)
+        context_str = "\n\n".join([n.node.get_content() for n in nodes])
+        kwargs = {"temperature":1}
+        response = self.llm.complete(
+            qa_prompt.format(context_str=context_str, query_str=query_str, **kwargs)
         )
 
         return str(response)
@@ -192,28 +186,24 @@ def index_wikipedia_pages(wikipage_requests, settings):
 
     # Use the open source LLMs hosted by Gradient
     if settings['MODEL'] == "llama2-7b-chat":
-        query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
         llm = CustomGradientBaseModelLLM(
             base_model_slug="llama2-7b-chat",
             max_tokens=500,
             is_chat_model=True,
-            # query_wrapper_prompt=query_wrapper_prompt
         )
+
     elif settings['MODEL'] == "nous-hermes2-yoda":
         llm = CustomGradientModelAdapterLLM(
             model_adapter_id=model_adapter_id,
             max_tokens=500,
             is_chat_model=True,
-            # query_wrapper_prompt=query_wrapper_prompt
 
         )
     elif settings['MODEL'] == "nous-hermes2":
-        query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
         llm = CustomGradientBaseModelLLM(
             base_model_slug="nous-hermes2",
             max_tokens=500,
             is_chat_model=True,
-            query_wrapper_prompt=query_wrapper_prompt
         )
 
     print(f"Preparing to index Wikipages: {wikipage_requests}")
@@ -242,13 +232,22 @@ def build_query_engine(wikipage_requests, n_results, settings):
         similarity_top_k=n_results,
     )
 
-    query_engine = RAGStringQueryEngine(
-        retriever=retriever,
-        response_synthesizer=synthesizer,
-        llm=llm,
-        qa_prompt=qa_prompt,
-        service_context=service_context
-    )
+    if settings['MODEL'] == "nous-hermes2-yoda":
+        query_engine = RAGStringQueryEngine_Adpater(
+            retriever=retriever,
+            response_synthesizer=synthesizer,
+            llm=llm,
+            qa_prompt=qa_prompt,
+            service_context=service_context
+        )
+    else:
+        query_engine = RAGStringQueryEngine(
+            retriever=retriever,
+            response_synthesizer=synthesizer,
+            llm=llm,
+            qa_prompt=qa_prompt,
+            service_context=service_context
+        )
 
     return query_engine, llm
 
@@ -300,14 +299,3 @@ async def main(message: cl.Message):
     response_message = cl.Message(content=response)
     print("response message", response_message)
     await cl.Message(author="Agent", content=response_message.content).send()
-
-# if __name__ == "__main__":
-    # index, service_context = index_wikipedia_pages(["2023 United States banking crisis"])
-    # query_engine = query_wiki_index(index=index, n_results=5, service_context=service_context)
-    # response = query_engine.chat("Which bank was first to default?")
-    # print(response)
-    # response = query_engine.query("Which bank was first to default?")
-    # print(response)
-    # agent = create_agent(["2023 United States banking crisis"])
-    # response = agent.chat("Which bank was first to default?")
-    # print(response)
