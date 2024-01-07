@@ -1,5 +1,13 @@
 import chainlit as cl
 import wikipedia
+from llama_index.query_engine import CustomQueryEngine
+from llama_index.retrievers import BaseRetriever
+from llama_index.query_engine import CustomQueryEngine
+from llama_index.retrievers import BaseRetriever
+from llama_index.response_synthesizers import (
+    get_response_synthesizer,
+    BaseSynthesizer,
+)
 from chainlit.input_widget import TextInput, Select
 from llama_index.embeddings import GradientEmbedding
 from llama_index.readers.schema.base import Document
@@ -16,6 +24,40 @@ from llama_index.node_parser import TokenTextSplitter
 import setup
 
 setup.set_environment_variables()
+global model_adapter_id
+model_adapter_id = "5658ef8f-6295-4e8b-b2d1-92abefe6b303_model_adapter"
+
+# Set prompt template
+qa_prompt = PromptTemplate(
+    "<s>### Instruction:\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "Given the context information and not prior knowledge, "
+    "answer the query.\n"
+    "Query: {query_str}\n\n"
+    "### Response:\n"
+    # "</s>"
+)
+
+# class RAGStringQueryEngine(CustomQueryEngine):
+#     """RAG String Query Engine."""
+
+#     retriever: BaseRetriever
+#     response_synthesizer: BaseSynthesizer
+#     llm: CustomGradientModelAdapterLLM
+#     qa_prompt: PromptTemplate
+
+#     def custom_query(self, query_str: str):
+#         nodes = self.retriever.retrieve(query_str)
+
+#         context_str = "\n\n".join([n.node.get_content() for n in nodes])
+#         response = self.llm.complete(
+#             qa_prompt.format(context_str=context_str, query_str=query_str)
+#         )
+
+#         return str(response)
+
 
 class CustomGradientBaseModelLLM(_BaseGradientLLM):
     base_model_slug: str = Field(
@@ -51,8 +93,6 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
             # messages_to_prompt=messages_to_prompt,
             # completion_to_prompt=completion_to_prompt,
         )
-
-        # Delete after 
 
         self._model = self._gradient.get_base_model(
             base_model_slug=base_model_slug,
@@ -101,6 +141,35 @@ class CustomGradientModelAdapterLLM(_BaseGradientLLM):
             model_adapter_id=model_adapter_id,
         )
 
+    @override
+    def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
+        print(f"Custom Prompt: {prompt}")  # Custom print statement
+        return super().complete(prompt, **kwargs)
+
+    @override
+    async def acomplete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
+        print(f"Custom Prompt: {prompt}")  # Custom print statement
+        return await super().acomplete(prompt, **kwargs)
+
+class RAGStringQueryEngine(CustomQueryEngine):
+    """RAG String Query Engine."""
+    
+    retriever: BaseRetriever
+    response_synthesizer: BaseSynthesizer
+    llm: CustomGradientModelAdapterLLM
+    qa_prompt: PromptTemplate
+
+    def custom_query(self, query_str: str):
+        nodes = self.retriever.retrieve(query_str)
+
+        context_str = "\n\n".join([n.node.get_content() for n in nodes])
+        response = self.llm.complete(
+            qa_prompt.format(context_str=context_str, query_str=query_str)
+        )
+
+        return str(response)
+
+
 def create_wikidocs(wikipage_requests):
     list_of_wikipages = [wikipage_requests]
     
@@ -123,30 +192,28 @@ def create_wikidocs(wikipage_requests):
 def index_wikipedia_pages(wikipage_requests, settings):
 
     # Use the open source LLMs hosted by Gradient
-
-
     if settings['MODEL'] == "llama2-7b-chat":
         query_wrapper_prompt = PromptTemplate("[INST] {response} [/INST]")
         llm = CustomGradientBaseModelLLM(
             base_model_slug="llama2-7b-chat",
-            max_tokens=250,
+            max_tokens=500,
             is_chat_model=True,
             query_wrapper_prompt=query_wrapper_prompt
         )
-    elif settings['MODEL'] == "35fe5692-aaa9-421a-833b-a0171d433a00_model_adapter":
-        query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
+    elif settings['MODEL'] == "nous-hermes2-yoda":
+        # query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
         llm = CustomGradientModelAdapterLLM(
-            model_adapter_id="35fe5692-aaa9-421a-833b-a0171d433a00_model_adapter",
-            max_tokens=250,
+            model_adapter_id=model_adapter_id,
+            max_tokens=500,
             is_chat_model=True,
-            query_wrapper_prompt=query_wrapper_prompt
+            # query_wrapper_prompt=query_wrapper_prompt
 
         )
     elif settings['MODEL'] == "nous-hermes2":
         query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
         llm = CustomGradientBaseModelLLM(
             base_model_slug="nous-hermes2",
-            max_tokens=250,
+            max_tokens=500,
             is_chat_model=True,
             query_wrapper_prompt=query_wrapper_prompt
         )
@@ -162,23 +229,41 @@ def index_wikipedia_pages(wikipage_requests, settings):
     )
  
     service_context = ServiceContext.from_defaults(node_parser=parser, embed_model=embed_model, llm=llm)
-    # set_global_service_context(service_context)
     index = VectorStoreIndex.from_documents(documents, service_context=service_context, show_progress=True)
-    # index.storage_context.persist(index_path)
     print(f"{wikipage_requests} have been indexed.")
 
     return index, service_context, llm
 
 def build_query_engine(wikipage_requests, n_results, settings): 
     index, service_context, llm = index_wikipedia_pages(wikipage_requests, settings)
-    query_engine = index.as_query_engine(
-        chat_mode='context', 
+    synthesizer = get_response_synthesizer(response_mode="compact", service_context=service_context)
+
+    retriever = index.as_retriever(
         response_mode="compact", 
         verbose=True, 
-        similarity_top_k=n_results, 
+        similarity_top_k=n_results,
+    )
+
+    query_engine = RAGStringQueryEngine(
+        retriever=retriever,
+        response_synthesizer=synthesizer,
+        llm=llm,
+        qa_prompt=qa_prompt,
         service_context=service_context
     )
+
     return query_engine, llm
+
+# def build_query_engine(wikipage_requests, n_results, settings): 
+#     index, service_context, llm = index_wikipedia_pages(wikipage_requests, settings)
+#     query_engine = index.as_query_engine(
+#         chat_mode='context', 
+#         response_mode="compact", 
+#         verbose=True, 
+#         similarity_top_k=n_results, 
+#         service_context=service_context
+#     )
+#     return query_engine, llm
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -188,7 +273,7 @@ async def on_chat_start():
             Select(
                 id="MODEL",
                 label="Gradient Model",
-                values=["35fe5692-aaa9-421a-833b-a0171d433a00_model_adapter", "llama2-7b-chat", "nous-hermes2"],
+                values=["nous-hermes2-yoda", "llama2-7b-chat", "nous-hermes2"],
                 initial_index=0,
             ),
             TextInput(id="WikiPageRequest", label="Request Wikipage(s)"),
@@ -200,7 +285,7 @@ async def setup_agent(settings):
     global agent
     global index
     wikipage_requests = settings["WikiPageRequest"]
-    query_engine, llm = build_query_engine(wikipage_requests, n_results=5, settings=settings)
+    query_engine, llm = build_query_engine(wikipage_requests=wikipage_requests, n_results=5, settings=settings)
     cl.user_session.set("query_engine", query_engine)
     cl.user_session.set("llm", llm)
     await cl.Message(
