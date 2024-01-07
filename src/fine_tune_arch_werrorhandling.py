@@ -8,14 +8,14 @@ from gradientai import Gradient
 # Set Environment Variables
 setup.set_environment_variables()
 
-# Set script fine-tuning variables
+# set script fine-tuning variables
 data = "additional_yoda_style_questions_responses_thousand.jsonl"
 rank = 17
 num_epochs = 4
 learning_rate = 1e-5
-max_retries = 5  # Maximum number of retries per batch
 
 def read_samples_from_jsonl_in_batches(file_name, batch_size=100):
+    # Construct the file path relative to the parent of the current script's directory
     current_dir = pathlib.Path(__file__).parent
     file_path = current_dir.parent / file_name
 
@@ -61,8 +61,8 @@ def main():
     else:
         new_model_adapter = base_model.create_model_adapter(
             name="nous-hermes2-talk-yoda",
-            rank=rank,
-            learning_rate=learning_rate,
+            rank= rank,
+            learning_rate= learning_rate,
         )
         model_id = new_model_adapter.id
         print(f"Created new model adapter with id {model_id}")
@@ -82,19 +82,13 @@ def main():
             if epoch == start_epoch and batch_number <= start_batch:
                 continue
 
-            retries = 0
-            while retries < max_retries:
-                try:
-                    print(f"Processing batch {batch_number} in epoch {epoch + 1}, attempt {retries + 1}")
-                    new_model_adapter.fine_tune(samples=batch)
-                    save_state(epoch, batch_number, model_id)
-                    break  # Break out of the retry loop on success
-                except Exception as e:
-                    print(f"Error occurred: {e}")
-                    retries += 1
-                    if retries >= max_retries:
-                        print("Maximum retries reached, exiting fine-tuning.")
-                        return  # Stop if maximum retries have been reached
+            try:
+                print(f"Processing batch {batch_number} in epoch {epoch + 1}")
+                new_model_adapter.fine_tune(samples=batch)
+                save_state(epoch, batch_number, model_id)
+            except Exception as e:
+                print(f"Error occurred: {e}")
+                return
 
         completion = new_model_adapter.complete(query=sample_query, max_generated_token_count=500).generated_output
         print(f"Generated after epoch {epoch + 1}: {completion}")
