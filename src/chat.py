@@ -25,7 +25,7 @@ import setup
 
 setup.set_environment_variables()
 global model_adapter_id
-model_adapter_id = "5658ef8f-6295-4e8b-b2d1-92abefe6b303_model_adapter"
+model_adapter_id = "f06aec81-7305-435a-bb2f-d7b042da4d8d_model_adapter"
 
 # Set prompt template
 qa_prompt = PromptTemplate(
@@ -37,7 +37,6 @@ qa_prompt = PromptTemplate(
     "answer the query.\n"
     "Query: {query_str}\n\n"
     "### Response:\n"
-    # "</s>"
 )
 
 # class RAGStringQueryEngine(CustomQueryEngine):
@@ -198,10 +197,9 @@ def index_wikipedia_pages(wikipage_requests, settings):
             base_model_slug="llama2-7b-chat",
             max_tokens=500,
             is_chat_model=True,
-            query_wrapper_prompt=query_wrapper_prompt
+            # query_wrapper_prompt=query_wrapper_prompt
         )
     elif settings['MODEL'] == "nous-hermes2-yoda":
-        # query_wrapper_prompt = PromptTemplate("[/INST] {Response} </s>")
         llm = CustomGradientModelAdapterLLM(
             model_adapter_id=model_adapter_id,
             max_tokens=500,

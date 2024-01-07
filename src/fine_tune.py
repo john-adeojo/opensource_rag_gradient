@@ -5,7 +5,7 @@ import setup
 
 # Set Environment Variables
 setup.set_environment_variables()
-data = "yoda_style_questions_responses_1k.jsonl"
+data = "additional_yoda_style_questions_responses_thousand.jsonl"
 
 def read_samples_from_jsonl_in_batches(file_name, batch_size=100):
     # Construct the file path relative to the parent of the current script's directory
@@ -44,7 +44,7 @@ def main():
 
     new_model_adapter = base_model.create_model_adapter(
         name="nous-hermes2-yoda-v13",
-        rank= 16,
+        rank= 17,
         learning_rate= 1e-5,
     )
     print(f"Created model adapter with id {new_model_adapter.id}")
@@ -53,7 +53,7 @@ def main():
     completion = new_model_adapter.complete(query=sample_query, max_generated_token_count=500).generated_output
     print(f"Generated before finetuning!: {completion}")
 
-    num_epochs = 2
+    num_epochs = 3
     for epoch in range(num_epochs):
         print(f"Fine-tuning epoch {epoch + 1}")
         batch_number = 0
