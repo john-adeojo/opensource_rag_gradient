@@ -24,25 +24,17 @@ from llama_index.node_parser import TokenTextSplitter
 # from llama_index.llms.gradient import GradientBaseModelLLM, GradientModelAdapterLLM
 import setup
 
+# Parameters
+chunk_size = 150
+chunk_overlap = 30
+
 setup.set_environment_variables()
 global model_adapter_id
-model_adapter_id = "0e6a5775-6fd6-497a-be07-62feb2e84533_model_adapter"
-
-# Set prompt template
-# qa_prompt = PromptTemplate(
-#     "<s>### Instruction:\n"
-#     "---------------------\n"
-#     "{context_str}\n"
-#     "---------------------\n"
-#     "Given the context information and not prior knowledge, "
-#     "answer the query.\n"
-#     "Query: {query_str}\n\n"
-#     "### Response:\n"
-# )
+model_adapter_id = "d74be430-903b-4f18-9162-b06f81aeb4d5_model_adapter"
 
 qa_prompt = PromptTemplate(
     "<s>### Instruction:\n"
-    "{query_str}\n\n"
+    "Using the context, respond like Yoda to: {query_str}\n\n"
     "### Input:\n"
     "{context_str}\n\n"
     "### Response:\n"
@@ -208,7 +200,7 @@ def index_wikipedia_pages(wikipage_requests, settings):
 
     print(f"Preparing to index Wikipages: {wikipage_requests}")
     documents = create_wikidocs(wikipage_requests)
-    parser = TokenTextSplitter(chunk_size=70, chunk_overlap=5)
+    parser = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     
     embed_model = GradientEmbedding(
     gradient_access_token=os.environ['GRADIENT_ACCESS_TOKEN'],
