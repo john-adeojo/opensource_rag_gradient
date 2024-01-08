@@ -10,10 +10,11 @@ setup.set_environment_variables()
 
 # Set script fine-tuning variables
 data = "additional_yoda_style_questions_responses_thousand.jsonl"
-rank = 17
-num_epochs = 4
+rank = 25
+num_epochs = 3
 learning_rate = 1e-5
-max_retries = 5  # Maximum number of retries per batch
+max_retries = 3  # Maximum number of retries per batch
+model_name = "nous-hermes2-yoda-style-question-responses-1000"
 
 def read_samples_from_jsonl_in_batches(file_name, batch_size=100):
     current_dir = pathlib.Path(__file__).parent
@@ -35,8 +36,14 @@ def save_state(epoch, batch_number, model_id):
     with open('finetune_state.json', 'w') as file:
         json.dump(state, file)
 
-def load_state():
-    if os.path.exists('finetune_state.json'):
+# def load_state():
+#     if os.path.exists('finetune_state.json'):
+#         with open('finetune_state.json', 'r') as file:
+#             return json.load(file)
+#     return {'epoch': 0, 'batch_number': 0}
+        
+def load_state(resume=True):
+    if resume and os.path.exists('finetune_state.json'):
         with open('finetune_state.json', 'r') as file:
             return json.load(file)
     return {'epoch': 0, 'batch_number': 0}
@@ -49,7 +56,10 @@ def example_query_yoda():
 
 def main():
     load_dotenv()
-    state = load_state()
+    resume_previous_job = False  # Set to True to resume from last state, False for new job
+    state = load_state(resume=resume_previous_job)
+
+    # state = load_state()
 
     gradient = Gradient()
     base_model = gradient.get_base_model(base_model_slug="nous-hermes2")
@@ -60,7 +70,7 @@ def main():
         new_model_adapter = gradient.get_model_adapter(model_id)
     else:
         new_model_adapter = base_model.create_model_adapter(
-            name="nous-hermes2-talk-yoda",
+            name=model_name,
             rank=rank,
             learning_rate=learning_rate,
         )

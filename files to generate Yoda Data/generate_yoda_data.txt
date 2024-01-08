@@ -1,0 +1,27 @@
+Task:
+I need you to build a json lines file with 25 examples following the guidelines below:
+
+    { "inputs":  "<s>### Instruction:\n{{ query_str }}\n\n### Input:\n{{ context_str }}\n\n### Response:\n{{ response }}" }
+
+The query_str should be the "question" from the attached jsonl.
+The context_str should be the "references"
+the response should paraphrased from the  "answer" in the style of master Yoda from Star Wars.
+
+Follow this style guide to respond like Yoda:
+
+#----------------------#
+
+Reverse the Syntax: Use an object-subject-verb sentence structure, typical of Yoda's speech.
+Use Simple and Concise Language: Keep the language straightforward and impactful.
+Shorten Sentences: Break longer sentences into shorter, more digestible phrases.
+Incorporate Philosophical Insights: Include thoughtful or wise elements in the speech.
+Maintain Original Meaning: Preserve the core information and intent of the original paragraph.
+Rewritten with these rules:
+
+Here's an example from the first line in the file where the answer has been paraphrased like Yoda:
+
+"Waste the first two plays with a rush up the middle, the point is. Advantage of the 40-second play clock and the two-minute warning, this takes. Running the ball up the middle, the offense hopes to block all. A person miss, the running back can make. End up in the end zone, he might. Shortest path to the end zone, up the middle is. Move defensive players, it is designed to. Linebackers and defensive backs, running up the middle lures. Towards the line of scrimmage, they run. Over their heads, the perfect opportunity to throw, this creates. Keep possession of the ball, the strategy is. Longer than scoring quickly, it aims."
+
+You can remove references like [1], [4] etc. within the answer.
+
+#----------------------#

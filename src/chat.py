@@ -26,7 +26,7 @@ import setup
 
 setup.set_environment_variables()
 global model_adapter_id
-model_adapter_id = "10505b56-9aa2-4775-a73e-1343d86d88dc_model_adapter"
+model_adapter_id = "0e6a5775-6fd6-497a-be07-62feb2e84533_model_adapter"
 
 # Set prompt template
 # qa_prompt = PromptTemplate(
@@ -41,7 +41,7 @@ model_adapter_id = "10505b56-9aa2-4775-a73e-1343d86d88dc_model_adapter"
 # )
 
 qa_prompt = PromptTemplate(
-    "### Instruction:\n"
+    "<s>### Instruction:\n"
     "{query_str}\n\n"
     "### Input:\n"
     "{context_str}\n\n"
@@ -81,12 +81,12 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
     @override
     def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return super().complete(prompt, **kwargs)
+        return super().complete(prompt, temperature=1, **kwargs)
 
     @override
     async def acomplete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return await super().acomplete(prompt, **kwargs)
+        return await super().acomplete(prompt, temperature=1, **kwargs)
     
 
 class CustomGradientModelAdapterLLM(_BaseGradientLLM):
@@ -121,12 +121,12 @@ class CustomGradientModelAdapterLLM(_BaseGradientLLM):
     @override
     def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return super().complete(prompt, **kwargs)
+        return super().complete(prompt, temperature=1, **kwargs)
 
     @override
     async def acomplete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return await super().acomplete(prompt, **kwargs)
+        return await super().acomplete(prompt, temperature=1, **kwargs)
 
 class RAGStringQueryEngine_Adpater(CustomQueryEngine):
     """RAG String Query Engine."""
@@ -208,7 +208,7 @@ def index_wikipedia_pages(wikipage_requests, settings):
 
     print(f"Preparing to index Wikipages: {wikipage_requests}")
     documents = create_wikidocs(wikipage_requests)
-    parser = TokenTextSplitter(chunk_size=150, chunk_overlap=45)
+    parser = TokenTextSplitter(chunk_size=70, chunk_overlap=5)
     
     embed_model = GradientEmbedding(
     gradient_access_token=os.environ['GRADIENT_ACCESS_TOKEN'],
@@ -286,7 +286,10 @@ async def setup_agent(settings):
     cl.user_session.set("query_engine", query_engine)
     cl.user_session.set("llm", llm)
     await cl.Message(
-        author="Wiki Agent", content=f"""Wikipage(s) "{wikipage_requests}" successfully indexed"""
+        author="Wiki Agent", content=f"""Wikipage(s) "{wikipage_requests}" successfully indexed
+        You are using the {settings['MODEL']} model.
+        The model id is {llm._model.id}
+        """
     ).send()
 
 @cl.on_message
