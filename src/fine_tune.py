@@ -9,7 +9,7 @@ from gradientai import Gradient
 setup.set_environment_variables()
 
 # Set script fine-tuning variables
-data = "additional_yoda_style_questions_responses_thousand.jsonl"
+data = "prefixed_yoda_style_questions_responses_1k.jsonl"
 rank = 25
 num_epochs = 2
 learning_rate = 1e-5
@@ -44,7 +44,7 @@ def load_state(resume=True):
 
 def example_query_yoda():
     query = """  
-        Instruction:\nWhat's the capital of England?\n\n### Response:\n{response}</s> 
+        Instruction:\nRespond like Yoda to: What's the capital of England?\n\n### Response:\n</s> 
     """
     return query
 

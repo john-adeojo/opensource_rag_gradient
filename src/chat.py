@@ -13,7 +13,7 @@ from llama_index.embeddings import GradientEmbedding
 from llama_index.readers.schema.base import Document
 from llama_index.llms.gradient import _BaseGradientLLM
 from llama_index.callbacks.base import CallbackManager
-from typing import Optional, Any, Callable, Sequence
+from typing import Optional, Any
 from llama_index.prompts import PromptTemplate
 from llama_index.bridge.pydantic import Field
 import os
@@ -21,20 +21,34 @@ from typing_extensions import override
 from llama_index.llms.types import CompletionResponse
 from llama_index import VectorStoreIndex, ServiceContext
 from llama_index.node_parser import TokenTextSplitter
-# from llama_index.llms.gradient import GradientBaseModelLLM, GradientModelAdapterLLM
 import setup
 
 # Parameters
 chunk_size = 150
 chunk_overlap = 30
-
-setup.set_environment_variables()
-global model_adapter_id
 model_adapter_id = "d74be430-903b-4f18-9162-b06f81aeb4d5_model_adapter"
+temperature = 0.7
+prompt_engineering = True
 
-qa_prompt = PromptTemplate(
+# Respond like Yoda to:
+setup.set_environment_variables()
+
+if prompt_engineering:
+    qa_prompt = PromptTemplate(
+        "<s>### Instruction:\n"
+        "You are Yoda from Star Wars."
+        "You must craft a response to"
+        "the following query in a"
+        "typical Yoda fashion:"
+        "{query_str}\n\n"
+        "### Input:\n"
+        "{context_str}\n\n"
+        "### Response:\n"
+    )
+else:
+    qa_prompt = PromptTemplate(
     "<s>### Instruction:\n"
-    "Using the context, respond like Yoda to: {query_str}\n\n"
+    "{query_str}\n\n"
     "### Input:\n"
     "{context_str}\n\n"
     "### Response:\n"
@@ -73,12 +87,12 @@ class CustomGradientBaseModelLLM(_BaseGradientLLM):
     @override
     def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return super().complete(prompt, temperature=1, **kwargs)
+        return super().complete(prompt, temperature=temperature, **kwargs)
 
     @override
     async def acomplete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return await super().acomplete(prompt, temperature=1, **kwargs)
+        return await super().acomplete(prompt, temperature=temperature, **kwargs)
     
 
 class CustomGradientModelAdapterLLM(_BaseGradientLLM):
@@ -113,12 +127,12 @@ class CustomGradientModelAdapterLLM(_BaseGradientLLM):
     @override
     def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return super().complete(prompt, temperature=1, **kwargs)
+        return super().complete(prompt, temperature=temperature, **kwargs)
 
     @override
     async def acomplete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
         print(f"Custom Prompt: {prompt}")  # Custom print statement
-        return await super().acomplete(prompt, temperature=1, **kwargs)
+        return await super().acomplete(prompt, temperature=temperature, **kwargs)
 
 class RAGStringQueryEngine_Adpater(CustomQueryEngine):
     """RAG String Query Engine."""
@@ -187,14 +201,14 @@ def index_wikipedia_pages(wikipage_requests, settings):
     elif settings['MODEL'] == "nous-hermes2-yoda":
         llm = CustomGradientModelAdapterLLM(
             model_adapter_id=model_adapter_id,
-            max_tokens=500,
+            max_tokens=200,
             is_chat_model=True,
 
         )
     elif settings['MODEL'] == "nous-hermes2":
         llm = CustomGradientBaseModelLLM(
             base_model_slug="nous-hermes2",
-            max_tokens=500,
+            max_tokens=200,
             is_chat_model=True,
         )
 
@@ -221,7 +235,7 @@ def build_query_engine(wikipage_requests, n_results, settings):
     retriever = index.as_retriever(
         response_mode="compact", 
         verbose=True, 
-        similarity_top_k=n_results,
+        similarity_top_k=n_results,   
     )
 
     if settings['MODEL'] == "nous-hermes2-yoda":
@@ -243,17 +257,6 @@ def build_query_engine(wikipage_requests, n_results, settings):
 
     return query_engine, llm
 
-# def build_query_engine(wikipage_requests, n_results, settings): 
-#     index, service_context, llm = index_wikipedia_pages(wikipage_requests, settings)
-#     query_engine = index.as_query_engine(
-#         chat_mode='context', 
-#         response_mode="compact", 
-#         verbose=True, 
-#         similarity_top_k=n_results, 
-#         service_context=service_context
-#     )
-#     return query_engine, llm
-
 @cl.on_chat_start
 async def on_chat_start():
     # Settings
@@ -274,7 +277,7 @@ async def setup_agent(settings):
     global agent
     global index
     wikipage_requests = settings["WikiPageRequest"]
-    query_engine, llm = build_query_engine(wikipage_requests=wikipage_requests, n_results=5, settings=settings)
+    query_engine, llm = build_query_engine(wikipage_requests=wikipage_requests, n_results=4, settings=settings)
     cl.user_session.set("query_engine", query_engine)
     cl.user_session.set("llm", llm)
     await cl.Message(
