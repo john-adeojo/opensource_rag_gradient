@@ -28,7 +28,7 @@ chunk_size = 150
 chunk_overlap = 30
 model_adapter_id = "d74be430-903b-4f18-9162-b06f81aeb4d5_model_adapter"
 temperature = 0.7
-prompt_engineering = True
+prompt_engineering = False
 
 # Respond like Yoda to:
 setup.set_environment_variables()

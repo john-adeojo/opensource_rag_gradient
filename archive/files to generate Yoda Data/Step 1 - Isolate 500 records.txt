@@ -1,1 +1,0 @@
-I want you to create a separate jsonl file from this one: The file should have the structure {answer: {answer}}. The {answer} is the "answer" from the attached file. Do this for the first 500 records.
